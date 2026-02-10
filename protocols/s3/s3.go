@@ -46,11 +46,29 @@ func (p *Protocol) Detect(rawURL string) (protocols.Downloadable, bool) {
 // parseS3URL parses an S3 URL and returns a Downloader.
 //
 // Supported formats:
+//   - s3://bucket/key
 //   - https://s3.amazonaws.com/bucket/key
 //   - https://s3.us-west-2.amazonaws.com/bucket/key
 //   - https://bucket.s3.amazonaws.com/key
 //   - https://bucket.s3.us-west-2.amazonaws.com/key
 func parseS3URL(rawURL string) (*Downloader, error) {
+	// Handle s3://bucket/key format (AWS CLI style).
+	if strings.HasPrefix(rawURL, "s3://") {
+		path := strings.TrimPrefix(rawURL, "s3://")
+		path = strings.TrimPrefix(path, "/")
+		if path == "" {
+			return nil, errors.New("no bucket specified")
+		}
+		slashIdx := strings.Index(path, "/")
+		if slashIdx == -1 {
+			return &Downloader{bucket: path}, nil
+		}
+		return &Downloader{
+			bucket: path[:slashIdx],
+			key:    path[slashIdx+1:],
+		}, nil
+	}
+
 	if !strings.Contains(rawURL, "://") {
 		rawURL = "https://" + rawURL
 	}

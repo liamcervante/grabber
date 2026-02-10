@@ -8,16 +8,16 @@ Grabber is an alternative to [go-getter](https://github.com/hashicorp/go-getter)
 
 | | grabber | go-getter |
 |---|---|---|
-| Sparse checkout | Yes | No |
-| Programmatic credential injection | Yes | No (env vars / URL params only) |
-| HTTPS credential matching | Yes (git-style host/path matching) | No |
-| Git credential helper support | Yes (via system `git`) | Yes (shells out to `git`) |
-| SSH-to-HTTPS auto-transform | Yes | No |
-| OCI registry support | Yes | No |
-| Checksum verification | Yes (URL param or explicit API) | Yes (URL param only) |
-| Pure Go | Mostly (go-git for cloning; `hg` CLI for Mercurial) | No (shells out to git, hg, etc.) |
-| Zstandard / LZ4 archives | Yes | No |
-| Actively maintained | Yes | [Maintenance-only](https://github.com/hashicorp/go-getter/graphs/commit-activity) |
+| Sparse checkout | ✅ | ❌ |
+| Programmatic credential injection | ✅ | ❌ (env vars / URL params only) |
+| HTTPS credential matching | ✅ (git-style host/path matching) | ❌ |
+| Git credential helper support | ✅ (via system `git`) | ✅ (shells out to `git`) |
+| SSH-to-HTTPS auto-transform | ✅ | ❌ |
+| OCI registry support | ✅ | ❌ |
+| Checksum verification | ✅ (URL param or explicit API) | ✅ (URL param only) |
+| Pure Go | ✅ (`git` required only if using credential helpers; `hg` required for Mercurial) | ❌ (shells out to git, hg, etc.) |
+| Zstandard / LZ4 archives | ✅ | ❌ |
+| Actively maintained | ✅ | ❌ [Maintenance-only](https://github.com/hashicorp/go-getter/graphs/commit-activity) |
 
 ## Features
 
@@ -100,12 +100,14 @@ Use `//` to specify a subdirectory: `hg::bitbucket.org/user/repo//lib/core?rev=s
 
 | Format | Example |
 |--------|---------|
+| s3:// scheme | `s3://bucket/key` |
 | Path-style | `s3.amazonaws.com/bucket/key` |
 | Path-style regional | `s3.us-west-2.amazonaws.com/bucket/key` |
 | Virtual-hosted | `bucket.s3.amazonaws.com/key` |
 | Virtual-hosted regional | `bucket.s3.us-west-2.amazonaws.com/key` |
 
 **Auto-detected when** (no `s3::` prefix needed):
+- URL uses `s3://` scheme
 - Hostname contains `s3` and `amazonaws.com`
 
 Keys ending in `/` are treated as directory prefixes - all objects under that prefix are downloaded.

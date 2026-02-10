@@ -57,6 +57,28 @@ func TestParseS3URL(t *testing.T) {
 			wantKey:    "some/dir/",
 		},
 		{
+			name:       "s3 scheme with bucket and key",
+			url:        "s3://my-bucket/path/to/file.txt",
+			wantBucket: "my-bucket",
+			wantKey:    "path/to/file.txt",
+		},
+		{
+			name:       "s3 scheme bucket only",
+			url:        "s3://my-bucket",
+			wantBucket: "my-bucket",
+		},
+		{
+			name:       "s3 scheme with trailing slash (directory)",
+			url:        "s3://my-bucket/some/dir/",
+			wantBucket: "my-bucket",
+			wantKey:    "some/dir/",
+		},
+		{
+			name:    "s3 scheme empty",
+			url:     "s3://",
+			wantErr: true,
+		},
+		{
 			name:    "not an S3 URL",
 			url:     "https://example.com/file.txt",
 			wantErr: true,
@@ -108,6 +130,7 @@ func TestDetect(t *testing.T) {
 	}{
 		{"s3 path-style", "https://s3.amazonaws.com/bucket/key", true},
 		{"s3 virtual-hosted", "https://bucket.s3.amazonaws.com/key", true},
+		{"s3 scheme", "s3://my-bucket/key", true},
 		{"not s3", "https://example.com/file.txt", false},
 		{"git url", "https://github.com/user/repo.git", false},
 	}
