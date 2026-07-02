@@ -17,6 +17,7 @@ import (
 	"oras.land/oras-go/v2/registry/remote/auth"
 	"oras.land/oras-go/v2/registry/remote/retry"
 
+	"github.com/liamg/grabber/internal/netrc"
 	"github.com/liamg/grabber/protocols"
 	"github.com/liamg/grabber/settings"
 )
@@ -107,8 +108,17 @@ func (d *Downloader) Download(ctx context.Context, tmpDir string, s settings.Set
 	// retry.NewTransport, so oras's default retry-on-429/5xx behaviour is
 	// preserved and each retried attempt is re-dialed through the guard. A nil
 	// transport falls back to http.DefaultTransport inside retry.
-	cred := s.MatchOCICredential(d.registry)
-	hasCreds := cred != nil && (cred.Username != "" || cred.Password != "")
+	// Resolve credentials: an explicit OCI credential matched for this registry
+	// takes precedence, otherwise fall back to netrc (when enabled).
+	var username, password string
+	if cred := s.MatchOCICredential(d.registry); cred != nil {
+		username, password = cred.Username, cred.Password
+	} else if s.Netrc {
+		if m, err := netrc.Lookup(d.registry); err == nil && m != nil {
+			username, password = m.Login, m.Password
+		}
+	}
+	hasCreds := username != "" || password != ""
 	if s.HTTPTransport != nil || hasCreds {
 		authClient := &auth.Client{
 			Client: &http.Client{Transport: retry.NewTransport(s.HTTPTransport)},
@@ -116,8 +126,8 @@ func (d *Downloader) Download(ctx context.Context, tmpDir string, s settings.Set
 		}
 		if hasCreds {
 			authClient.Credential = auth.StaticCredential(d.registry, auth.Credential{
-				Username: cred.Username,
-				Password: cred.Password,
+				Username: username,
+				Password: password,
 			})
 		}
 		repo.Client = authClient

@@ -19,6 +19,17 @@ func WithHTTPTransport(rt http.RoundTripper) Option {
 	}
 }
 
+// WithNetrc enables ~/.netrc credential lookup for the HTTP and OCI protocols. A
+// download to a host with a matching netrc entry uses those credentials (HTTP
+// basic auth for HTTP, registry auth for OCI), unless an explicit credential
+// matches or the URL already carries a username. The file location honours
+// $NETRC, falling back to ~/.netrc (~/_netrc on Windows).
+func WithNetrc(enabled bool) Option {
+	return func(g *Grabber) {
+		g.settings.Netrc = enabled
+	}
+}
+
 func WithSparseCheckout(enabled bool) Option {
 	return func(g *Grabber) {
 		g.settings.Git.SparseCheckout = enabled

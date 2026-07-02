@@ -51,6 +51,13 @@ type Settings struct {
 	// If nil, each protocol falls back to its default transport
 	// (http.DefaultTransport).
 	HTTPTransport http.RoundTripper
+
+	// Netrc enables ~/.netrc credential lookup for the HTTP and OCI protocols.
+	// When set, a download to a host with a matching netrc entry uses those
+	// credentials (HTTP basic auth for HTTP, registry auth for OCI), unless an
+	// explicit credential matches or the URL already carries a username. The file
+	// location honours $NETRC, falling back to ~/.netrc (~/_netrc on Windows).
+	Netrc bool
 }
 
 type AWSCredentials struct {

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/liamg/grabber/internal/netrc"
 	"github.com/liamg/grabber/protocols"
 	"github.com/liamg/grabber/settings"
 )
@@ -81,9 +82,14 @@ func (d *Downloader) Download(ctx context.Context, tmpDir string, s settings.Set
 		return false, fmt.Errorf("creating request: %w", err)
 	}
 
-	// Apply matching HTTPS credentials if configured.
+	// Apply matching HTTPS credentials if configured, otherwise fall back to
+	// netrc (when enabled and the URL doesn't already carry a username).
 	if cred := s.MatchHTTPSCredential(d.url); cred != nil {
 		req.SetBasicAuth(cred.Username, cred.Password)
+	} else if s.Netrc && req.URL.User == nil {
+		if m, err := netrc.Lookup(req.URL.Hostname()); err == nil && m != nil && m.Login != "" {
+			req.SetBasicAuth(m.Login, m.Password)
+		}
 	}
 
 	client := http.DefaultClient
