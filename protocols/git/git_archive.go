@@ -63,7 +63,12 @@ func (d *Downloader) fetchArchive(ctx context.Context, tmpDir string, s settings
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	client := http.DefaultClient
+	if s.HTTPTransport != nil {
+		client = &http.Client{Transport: s.HTTPTransport}
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("downloading archive from %s: %w", aURL, err)
 	}
