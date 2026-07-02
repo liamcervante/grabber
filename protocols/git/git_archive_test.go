@@ -275,6 +275,40 @@ func TestContainsDotDot(t *testing.T) {
 	}
 }
 
+// recordingRoundTripper records whether it was used, delegating to a base.
+type recordingRoundTripper struct {
+	base   http.RoundTripper
+	called bool
+}
+
+func (rt *recordingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	rt.called = true
+	return rt.base.RoundTrip(req)
+}
+
+// TestFetchArchive_UsesHTTPTransport ensures the archive fallback routes through
+// the caller-supplied HTTPTransport (e.g. an SSRF guard / proxy) rather than
+// http.DefaultClient.
+func TestFetchArchive_UsesHTTPTransport(t *testing.T) {
+	archive := makeArchive(t, "repo-abc", map[string]string{"file.txt": "hi"})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(archive)
+	}))
+	defer srv.Close()
+
+	archiveURLOverride = srv.URL
+	defer func() { archiveURLOverride = "" }()
+
+	rt := &recordingRoundTripper{base: http.DefaultTransport}
+	d := &Downloader{repoURL: "https://github.com/owner/repo", ref: "abcdef"}
+	if err := d.fetchArchive(context.Background(), t.TempDir(), settings.Settings{HTTPTransport: rt}); err != nil {
+		t.Fatalf("fetchArchive: %v", err)
+	}
+	if !rt.called {
+		t.Error("archive fallback did not use the configured HTTPTransport")
+	}
+}
+
 // TestDownload_ArchiveFallback verifies that when git cannot resolve a commit
 // hash, the download falls back to the hosting platform's HTTP archive.
 func TestDownload_ArchiveFallback(t *testing.T) {
