@@ -26,6 +26,7 @@ Grabber is an alternative to [go-getter](https://github.com/hashicorp/go-getter)
 - **Programmatic credential injection** — pass SSH keys, AWS credentials, GCP service account keys, OCI registry credentials, and HTTPS credentials via the Go API
 - **HTTPS credential matching** — configure HTTPS credentials with git-style host/path matching, used automatically for Git and HTTP protocols
 - **SSH-to-HTTPS auto-transform** — automatically convert SSH/SCP Git URLs to HTTPS (useful in CI environments without SSH key access)
+- **Custom TLS and proxying** — trust extra CAs, present mutual-TLS client certificates (per host), and route through HTTP proxies (global or per host) for the HTTP, OCI, and Git protocols — all via functional options, no environment variables
 - **Pure Go** — no system `git` or other CLI tools required (except `hg` for Mercurial; system `git` is used for credential helper support if available)
 - **Checksum verification** — verify downloaded file integrity via URL query param (`?checksum=sha256:abc...`) or the explicit `GrabWithSHA256Checksum()` API
 - **Automatic archive extraction** — downloaded archives are detected and extracted by extension
@@ -74,7 +75,7 @@ Use `//` to specify a subdirectory: `github.com/user/repo//modules/vpc?ref=v1.0.
 When sparse checkout is enabled, only the specified subdirectory is checked out. Otherwise the full repo is cloned and the subdirectory is extracted.
 
 **Orphaned commit fallback:**
-When `ref` is a commit SHA that the git protocol can't reach (e.g. an orphaned commit that is no longer reachable from any branch or tag), grabber falls back to downloading a tarball of that commit from the hosting platform's HTTP API. GitHub, GitLab, and Bitbucket are supported. Credentials are resolved from the same sources as clones (URL userinfo, configured HTTPS credentials, the git credential helper) and, failing those, from well-known API token environment variables: `GH_TOKEN`/`GITHUB_TOKEN`, `GITLAB_TOKEN`/`GL_TOKEN`, and `BITBUCKET_TOKEN`. The result is a plain source snapshot with no `.git` directory. SSH keys cannot be used for this HTTP fallback, so SSH-only setups need HTTP credentials configured for private repositories.
+When `ref` is a commit SHA that the git protocol can't reach (e.g. an orphaned commit that is no longer reachable from any branch or tag), grabber falls back to downloading a tarball of that commit from the hosting platform's HTTP API. GitHub, GitLab, and Bitbucket are supported. Credentials are resolved from the same sources as clones (URL userinfo, configured HTTPS credentials, the git credential helper) and, failing those, from well-known API token environment variables: `GH_TOKEN`/`GITHUB_TOKEN`, `GITLAB_TOKEN`/`GL_TOKEN`, and `BITBUCKET_TOKEN` (unless `WithNoSystemFallback()` is set, which disables the environment-variable lookup). The result is a plain source snapshot with no `.git` directory. SSH keys cannot be used for this HTTP fallback, so SSH-only setups need HTTP credentials configured for private repositories.
 
 ### Mercurial
 
@@ -196,6 +197,8 @@ g := grabber.New(
 | `WithGitSSHKeyForHost(host, []byte)` | SSH private key scoped to a specific host (takes precedence over the default) |
 | `WithGitDepth(int)` | Override shallow clone depth for Git (default: 1; 0 = full clone) |
 | `WithGitInsecureSkipHostKeyVerify()` | Skip SSH host key verification |
+| `WithGitKnownHosts([]byte)` | Verify SSH host keys against known_hosts data in memory (allows unknown hosts, rejects changed keys) |
+| `WithNoSystemFallback()` | Disable all ambient/system fallbacks (SSH agent, `git credential` helper, archive env-var tokens, `~/.ssh/known_hosts`, and the `hg` subprocess) |
 | `WithAWSCredentials(keyID, secret, token, region)` | Static AWS credentials for S3 |
 | `WithGCPCredentials(serviceAccountKey)` | GCP service account key for GCS |
 | `WithOCICredentials(username, password)` | Default registry credentials for OCI |
@@ -204,6 +207,12 @@ g := grabber.New(
 | `WithHTTPSCredential(host, user, pass)` | Add an HTTPS credential matched by host |
 | `WithHTTPSCredentialForPath(host, path, user, pass)` | Add an HTTPS credential matched by host and path prefix |
 | `WithGitSSHToHTTPS()` | Auto-convert SSH/SCP Git URLs to HTTPS before cloning |
+| `WithTLSCACert(pem)` | Trust an additional CA for HTTPS connections (HTTP, OCI, and Git protocols); repeatable |
+| `WithClientCertificate(certPEM, keyPEM)` | Default TLS client certificate for mutual TLS |
+| `WithClientCertificateForHost(host, certPEM, keyPEM)` | TLS client certificate scoped to a specific host (takes precedence over the default) |
+| `WithHTTPProxy(url, user, pass)` | Global HTTP proxy for HTTP, OCI, and Git (HTTPS) requests |
+| `WithHTTPProxyForHost(host, url, user, pass)` | HTTP proxy scoped to a specific host (preferred over the global proxy when it matches) |
+| `WithHTTPTransport(*http.Transport)` | Base transport for the HTTP/OCI protocols (e.g. with an SSRF-guarded dialer); cloned per download with the TLS/proxy options layered on top |
 | `WithProtocols(...Protocol)` | Override the default set of protocols |
 
 When AWS/GCP credentials are not provided, the respective SDK default credential chains are used (env vars, shared config, IAM roles, etc.).
@@ -362,7 +371,7 @@ Early development. API is not yet stable.
 
 ## Known Limitations
 
-- **Git credential helpers require system `git`** — go-git doesn't support `credential.helper` from `~/.gitconfig`, so grabber shells out to `git credential fill` when `git` is on `PATH`. Without system `git`, credential helpers won't work — use `WithGitSSHKey()`, `WithHTTPSCredential()`, or embed credentials in the URL instead.
+- **Git credential helpers require system `git`** — go-git doesn't support `credential.helper` from `~/.gitconfig`, so grabber shells out to `git credential fill` when `git` is on `PATH`. Without system `git`, credential helpers won't work — use `WithGitSSHKey()`, `WithHTTPSCredential()`, or embed credentials in the URL instead. This shell-out (like the SSH agent and known_hosts defaults) is a system fallback and can be turned off entirely with `WithNoSystemFallback()`.
 
 ## License
 

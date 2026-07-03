@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -239,6 +240,58 @@ func TestWithOCICredentialForRegistry(t *testing.T) {
 	// A registry with no specific match falls back to the default credential.
 	if cred := g.settings.MatchOCICredential("registry.example.com"); cred == nil || cred.Username != "default-user" {
 		t.Errorf("expected fallback to default-user, got %+v", cred)
+	}
+}
+
+func TestWithTLSAndProxyOptions(t *testing.T) {
+	proxyURL, _ := url.Parse("http://proxy.example.com:8080")
+	registryProxyURL, _ := url.Parse("http://registry-proxy.example.com:8080")
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+
+	g := New(
+		WithHTTPTransport(tr),
+		WithTLSCACert([]byte("ca-pem")),
+		WithTLSCACert([]byte("second-ca")),
+		WithClientCertificate([]byte("cert"), []byte("key")),
+		WithClientCertificateForHost("github.example.com", []byte("gh-cert"), []byte("gh-key")),
+		WithHTTPProxy(proxyURL, "user", "pass"),
+		WithHTTPProxyForHost("registry.terraform.io", registryProxyURL, "", ""),
+	)
+
+	if g.settings.HTTPTransport != tr {
+		t.Error("expected HTTPTransport to be set")
+	}
+	if len(g.settings.TLSCACerts) != 2 {
+		t.Errorf("expected 2 CA certs, got %d", len(g.settings.TLSCACerts))
+	}
+	if c := g.settings.MatchClientCertificate("github.example.com"); c == nil || string(c.Cert) != "gh-cert" {
+		t.Errorf("expected host-scoped cert for github.example.com, got %+v", c)
+	}
+	if c := g.settings.MatchClientCertificate("other.example.com"); c == nil || string(c.Cert) != "cert" {
+		t.Errorf("expected default cert fallback, got %+v", c)
+	}
+	if p := g.settings.MatchProxy("registry.terraform.io"); p == nil || p.URL != registryProxyURL {
+		t.Errorf("expected host-scoped proxy, got %+v", p)
+	}
+	if p := g.settings.MatchProxy("github.com"); p == nil || p.URL != proxyURL || p.Username != "user" {
+		t.Errorf("expected global proxy fallback, got %+v", p)
+	}
+}
+
+func TestWithNoSystemFallback(t *testing.T) {
+	if g := New(); g.settings.NoSystemFallback {
+		t.Error("expected NoSystemFallback=false by default")
+	}
+	if g := New(WithNoSystemFallback()); !g.settings.NoSystemFallback {
+		t.Error("expected NoSystemFallback=true after WithNoSystemFallback()")
+	}
+}
+
+func TestWithGitKnownHosts(t *testing.T) {
+	kh := []byte("example.com ssh-ed25519 AAAA...")
+	g := New(WithGitKnownHosts(kh))
+	if !bytes.Equal(g.settings.Git.KnownHosts, kh) {
+		t.Errorf("expected KnownHosts to be set, got %q", g.settings.Git.KnownHosts)
 	}
 }
 
