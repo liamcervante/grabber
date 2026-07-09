@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/liamg/grabber/internal/netrc"
 	"github.com/liamg/grabber/protocols"
 	"github.com/liamg/grabber/settings"
 )
@@ -94,12 +95,17 @@ func (d *Downloader) Download(ctx context.Context, tmpDir string, s settings.Set
 	}
 
 	// Resolve credentials: embedded URL userinfo wins; otherwise a configured
-	// static credential; otherwise the dynamic request function.
+	// static credential; otherwise the dynamic request function; otherwise
+	// netrc (when enabled).
 	if req.URL.User == nil {
 		if cred := s.MatchHTTPSCredential(d.url); cred != nil {
 			req.SetBasicAuth(cred.Username, cred.Password)
 		} else if user, pass, ok := s.RequestCredential(ctx, req.URL.Scheme, req.URL.Hostname(), req.URL.Path); ok {
 			req.SetBasicAuth(user, pass)
+		} else if s.Netrc {
+			if m, err := netrc.Lookup(req.URL.Hostname()); err == nil && m != nil && m.Login != "" {
+				req.SetBasicAuth(m.Login, m.Password)
+			}
 		}
 	}
 

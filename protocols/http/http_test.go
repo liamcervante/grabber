@@ -2,12 +2,14 @@ package http
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -296,6 +298,73 @@ func TestDownload_WithHTTPSCredentials(t *testing.T) {
 	if string(data) != "secret content" {
 		t.Errorf("downloaded content = %q, want %q", string(data), "secret content")
 	}
+}
+
+func TestDownload_Netrc(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Write([]byte("content"))
+	}))
+	defer srv.Close()
+
+	hostname, _, _ := strings.Cut(strings.TrimPrefix(srv.URL, "http://"), ":")
+	netrcPath := filepath.Join(t.TempDir(), ".netrc")
+	if err := os.WriteFile(netrcPath, []byte("machine "+hostname+" login netrc-user password netrc-pass\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NETRC", netrcPath)
+
+	d := &Downloader{url: srv.URL + "/file.txt"}
+	s := withoutSSRF(settings.Defaults)
+	s.Netrc = true
+
+	if _, err := d.Download(context.Background(), t.TempDir(), s); err != nil {
+		t.Fatalf("Download() error: %v", err)
+	}
+
+	user, pass, ok := parseBasicAuth(gotAuth)
+	if !ok || user != "netrc-user" || pass != "netrc-pass" {
+		t.Errorf("netrc credentials not applied: got auth %q", gotAuth)
+	}
+}
+
+func TestDownload_NetrcDisabled(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Write([]byte("content"))
+	}))
+	defer srv.Close()
+
+	hostname, _, _ := strings.Cut(strings.TrimPrefix(srv.URL, "http://"), ":")
+	netrcPath := filepath.Join(t.TempDir(), ".netrc")
+	if err := os.WriteFile(netrcPath, []byte("machine "+hostname+" login u password p\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NETRC", netrcPath)
+
+	d := &Downloader{url: srv.URL + "/file.txt"}
+	// settings.Defaults has Netrc=false — netrc must be ignored.
+	if _, err := d.Download(context.Background(), t.TempDir(), withoutSSRF(settings.Defaults)); err != nil {
+		t.Fatalf("Download() error: %v", err)
+	}
+	if gotAuth != "" {
+		t.Errorf("expected no auth when netrc disabled, got %q", gotAuth)
+	}
+}
+
+func parseBasicAuth(header string) (user, pass string, ok bool) {
+	const prefix = "Basic "
+	if !strings.HasPrefix(header, prefix) {
+		return "", "", false
+	}
+	decoded, err := base64.StdEncoding.DecodeString(header[len(prefix):])
+	if err != nil {
+		return "", "", false
+	}
+	user, pass, ok = strings.Cut(string(decoded), ":")
+	return user, pass, ok
 }
 
 func TestDownload_WithHTTPSCredentials_NoMatch(t *testing.T) {

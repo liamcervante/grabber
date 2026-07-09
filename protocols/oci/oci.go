@@ -17,6 +17,7 @@ import (
 	"oras.land/oras-go/v2/registry/remote/auth"
 	"oras.land/oras-go/v2/registry/remote/retry"
 
+	"github.com/liamg/grabber/internal/netrc"
 	"github.com/liamg/grabber/protocols"
 	"github.com/liamg/grabber/settings"
 )
@@ -124,13 +125,18 @@ func (d *Downloader) Download(ctx context.Context, tmpDir string, s settings.Set
 		return false, fmt.Errorf("configuring OCI transport: %w", err)
 	}
 	// Resolve credentials: a static registry credential wins; otherwise the
-	// dynamic request function.
+	// dynamic request function; otherwise netrc (when enabled).
 	var username, password string
 	hasCreds := false
 	if cred := s.MatchOCICredential(d.registry); cred != nil && (cred.Username != "" || cred.Password != "") {
 		username, password, hasCreds = cred.Username, cred.Password, true
 	} else if user, pass, ok := s.RequestCredential(ctx, "oci", d.registry, ociRepoPath(d.ref, d.registry)); ok {
 		username, password, hasCreds = user, pass, true
+	} else if s.Netrc {
+		if m, err := netrc.Lookup(d.registry); err == nil && m != nil {
+			username, password = m.Login, m.Password
+			hasCreds = username != "" || password != ""
+		}
 	}
 
 	if tr != nil || hasCreds {
